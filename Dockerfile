@@ -18,13 +18,20 @@ RUN git clone https://github.com/ggerganov/whisper.cpp.git .
 FROM source as builder
 WORKDIR /app
 
-# Configure CMake with CUDA support
+# Configure CMake with CUDA support and proper library paths
 RUN cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES="60;70;75;80;86" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath=/usr/local/cuda/lib64" \
-    -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath=/usr/local/cuda/lib64"
+    -DCMAKE_CUDA_FLAGS="-I/usr/local/cuda/include" \
+    -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64 -lcuda -lcudart" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64 -lcuda -lcudart"
+
+# Create symlink for libcuda
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+
+# Set library path for build
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs:$LD_LIBRARY_PATH
 
 # Build the application
 RUN cmake --build build --config Release -j$(nproc)
@@ -48,10 +55,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy CUDA libraries and dependencies
-COPY --from=builder /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 COPY --from=builder /usr/local/cuda/lib64/libcudart.so* /usr/local/cuda/lib64/
 COPY --from=builder /usr/local/cuda/lib64/libcublas.so* /usr/local/cuda/lib64/
 COPY --from=builder /usr/local/cuda/lib64/libcublasLt.so* /usr/local/cuda/lib64/
+COPY --from=builder /usr/local/cuda/lib64/stubs/libcuda.so* /usr/local/cuda/lib64/
 
 # Copy application files
 COPY --from=builder /app/build/bin/whisper-server ./build/bin/
