@@ -20,7 +20,7 @@ WORKDIR /app
 
 # Configure CMake with CUDA support
 RUN cmake -B build \
-    -DWHISPER_CUBLAS=ON \
+    -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES="60;70;75;80;86" \
     -DCMAKE_BUILD_TYPE=Release
 
