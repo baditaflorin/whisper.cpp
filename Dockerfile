@@ -1,5 +1,5 @@
 # Stage 1: Build dependencies
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04 as builder-base
+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04 as builder-base
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -22,7 +22,9 @@ WORKDIR /app
 RUN cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES="60;70;75;80;86" \
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath=/usr/local/cuda/lib64" \
+    -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath=/usr/local/cuda/lib64"
 
 # Build the application
 RUN cmake --build build --config Release -j$(nproc)
@@ -34,7 +36,7 @@ RUN mkdir -p models && \
     wget -P models/ https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
 
 # Stage 5: Final runtime image
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -45,9 +47,19 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Copy only necessary files from builder
+# Copy CUDA libraries and dependencies
+COPY --from=builder /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+COPY --from=builder /usr/local/cuda/lib64/libcudart.so* /usr/local/cuda/lib64/
+COPY --from=builder /usr/local/cuda/lib64/libcublas.so* /usr/local/cuda/lib64/
+COPY --from=builder /usr/local/cuda/lib64/libcublasLt.so* /usr/local/cuda/lib64/
+
+# Copy application files
 COPY --from=builder /app/build/bin/whisper-server ./build/bin/
+COPY --from=builder /app/build/lib* ./build/
 COPY --from=model-downloader /app/models ./models
+
+# Set library path
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/app/build:$LD_LIBRARY_PATH
 
 # Expose the server port
 EXPOSE 7001
