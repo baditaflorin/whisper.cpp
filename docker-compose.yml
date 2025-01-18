@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  whisper-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7001:7001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
